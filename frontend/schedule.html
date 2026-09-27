@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MediRemind – Today's Schedule</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ── Notification Permission Banner ── -->
+<div id="notif-banner" style="
+  display:none; position:fixed; top:0; left:0; right:0; z-index:9999;
+  background:linear-gradient(90deg,#6c63ff,#48cae4); color:#fff;
+  padding:12px 20px; font-size:14px; font-weight:600;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;">
+  <span>🔔 Enable notifications to get medicine reminders even when this tab is in the background.</span>
+  <div style="display:flex;gap:8px;flex-shrink:0">
+    <button onclick="enableNotifications()" style="background:#fff;color:#6c63ff;border:none;padding:6px 14px;border-radius:6px;font-weight:700;cursor:pointer">Enable</button>
+    <button onclick="document.getElementById('notif-banner').style.display='none'" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,0.5);padding:6px 14px;border-radius:6px;cursor:pointer">Dismiss</button>
+  </div>
+</div>
+
+<!-- Toast (also used as reminder popup) -->
+<div class="toast" id="toast">
+  <span id="toast-icon">💊</span>
+  <span id="toast-msg">Notification</span>
+  <span class="toast-close" onclick="closeToast()">✕</span>
+</div>
+
+<!-- ── Urgent Full-Screen Flashing Alarm Overlay ── -->
+<div class="alarm-overlay" id="alarm-overlay">
+  <div class="alarm-modal">
+    <div class="alarm-icon-wrap">🚨</div>
+    <div class="alarm-badge">URGENT MEDICINE REMINDER</div>
+    <h2 class="alarm-title">Time to Take Your Medicine!</h2>
+    <p class="alarm-subtitle">A dose is due right now. Please take it and record your status.</p>
+
+    <div class="alarm-med-box">
+      <div class="alarm-med-name">
+        <span>💊</span>
+        <span id="alarm-med-title">Medicine Name</span>
+      </div>
+      <div class="alarm-med-meta">
+        <div><strong>Dosage:</strong> <span id="alarm-med-dosage">–</span></div>
+        <div><strong>Scheduled:</strong> <span id="alarm-med-time">–</span></div>
+      </div>
+      <div id="alarm-med-instructions-wrap" style="margin-top:8px;font-size:13px;color:#64748b;display:none">
+        <strong>Instructions:</strong> <span id="alarm-med-instructions"></span>
+      </div>
+    </div>
+
+    <div class="alarm-actions">
+      <button class="btn-alarm-take" id="btn-alarm-take" onclick="takeAlarmMedicine()">
+        <span>✅</span> I Have Taken It
+      </button>
+      <div class="alarm-secondary-actions">
+        <button class="btn-alarm-snooze" onclick="snoozeAlarm()">⏰ Snooze (5m)</button>
+        <button class="btn-alarm-dismiss" onclick="dismissAlarm()">✕ Dismiss</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="page-wrapper">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">💊</div>
+      <h1>Medi<span>Remind</span></h1>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item" href="dashboard.html">     <span class="icon">🏠</span> Dashboard</a>
+      <a class="nav-item" href="medicines.html">     <span class="icon">💉</span> My Medicines</a>
+      <a class="nav-item" href="add-medicine.html">  <span class="icon">➕</span> Add Medicine</a>
+      <a class="nav-item active" href="schedule.html"><span class="icon">📅</span> Today's Schedule</a>
+      <a class="nav-item" href="history.html">       <span class="icon">📋</span> Dose History</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="user-avatar">U</div>
+        <div>
+          <div class="user-name" id="user-name">User</div>
+          <div class="user-email"><a href="#" onclick="logout()" style="color:var(--danger);font-size:11px">Logout</a></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div>
+        <h2>📅 Today's Schedule</h2>
+        <p id="today-date">Loading date…</p>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-outline" style="border-color:#ef4444;color:#dc2626;font-weight:700;display:flex;align-items:center;gap:6px" onclick="triggerAlarmTest()">
+          <span>🚨</span> Test Sound & Alarm
+        </button>
+        <button class="btn btn-outline" onclick="loadSchedule()">🔄 Refresh</button>
+      </div>
+    </div>
+
+    <!-- Summary row -->
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:24px">
+      <div class="stat-card">
+        <div class="stat-icon blue">📋</div>
+        <div><div class="stat-value" id="s-total">–</div><div class="stat-label">Total Today</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon green">✅</div>
+        <div><div class="stat-value" id="s-taken">–</div><div class="stat-label">Taken</div></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon amber">⏳</div>
+        <div><div class="stat-value" id="s-pending">–</div><div class="stat-label">Pending</div></div>
+      </div>
+    </div>
+
+    <!-- Schedule List -->
+    <div class="card">
+      <div id="schedule-list">
+        <div class="empty-state"><div class="empty-icon">⏳</div><p>Loading…</p></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  const API   = (window.location.protocol === "file:" || ((window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") && window.location.port !== "8000"))
+    ? "http://127.0.0.1:8000"
+    : window.location.origin;
+  const token = localStorage.getItem("token");
+  if (!token) window.location.href = "index.html";
+
+  const username = localStorage.getItem("username") || "User";
+  document.getElementById("user-name").textContent   = username;
+  document.getElementById("user-avatar").textContent = username.charAt(0).toUpperCase();
+  document.getElementById("today-date").textContent  =
+    new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+  function logout() { localStorage.clear(); window.location.href = "index.html"; }
+
+  function showToast(msg, isReminder = false, duration = 5000) {
+    const el = document.getElementById("toast");
+    document.getElementById("toast-msg").textContent = msg;
+    el.classList.toggle("reminder-toast", isReminder);
+    el.classList.add("show");
+    clearTimeout(el._timer);
+    el._timer = setTimeout(() => el.classList.remove("show"), duration);
+  }
+  function closeToast() { document.getElementById("toast").classList.remove("show"); }
+
+  // ── Web Audio API Alarm Synthesizer ──
+  let audioCtx = null;
+  let alarmInterval = null;
+  let isAlarmPlaying = false;
+  let activeAlarmReminder = null;
+  const alertedReminders = new Set();
+  const snoozedReminders = new Map();
+  let titleFlashTimer = null;
+  const originalDocTitle = document.title;
+
+  function initAudio() {
+    if (!audioCtx) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) audioCtx = new AudioCtx();
+    }
+    if (audioCtx && audioCtx.state === "suspended") {
+      audioCtx.resume();
+    }
+  }
+
+  function playBeepTone() {
+    try {
+      initAudio();
+      if (!audioCtx) return;
+
+      const t = audioCtx.currentTime;
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      osc1.type = "sawtooth";
+      osc2.type = "sine";
+      osc1.frequency.setValueAtTime(880, t);
+      osc1.frequency.setValueAtTime(1174, t + 0.15);
+      osc2.frequency.setValueAtTime(1320, t);
+      osc2.frequency.setValueAtTime(1760, t + 0.15);
+
+      gain.gain.setValueAtTime(0.35, t);
+      gain.gain.exponentialRampToValueAtTime(0.01, t + 0.45);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc1.start(t);
+      osc2.start(t);
+      osc1.stop(t + 0.45);
+      osc2.stop(t + 0.45);
+    } catch (e) {
+      console.warn("Alarm tone error:", e);
+    }
+  }
+
+  function startAlarmSound() {
+    if (isAlarmPlaying) return;
+    isAlarmPlaying = true;
+    initAudio();
+    playBeepTone();
+    alarmInterval = setInterval(playBeepTone, 1100);
+  }
+
+  function stopAlarmSound() {
+    isAlarmPlaying = false;
+    if (alarmInterval) {
+      clearInterval(alarmInterval);
+      alarmInterval = null;
+    }
+  }
+
+  function startTitleFlash(name) {
+    if (titleFlashTimer) clearInterval(titleFlashTimer);
+    let alt = false;
+    titleFlashTimer = setInterval(() => {
+      document.title = alt ? `🚨 TAKE: ${name} NOW!` : `🔔 (1) MEDICINE ALARM!`;
+      alt = !alt;
+    }, 800);
+  }
+
+  function stopTitleFlash() {
+    if (titleFlashTimer) {
+      clearInterval(titleFlashTimer);
+      titleFlashTimer = null;
+    }
+    document.title = originalDocTitle;
+  }
+
+  // ── Show Full-Screen Urgent Alarm ──
+  function triggerAlarm(reminder) {
+    activeAlarmReminder = reminder;
+    const name = reminder?.medicines?.name || "Medicine";
+    const dosage = reminder?.medicines?.dosage || "";
+    const time = formatTime(reminder?.scheduled_time);
+    const instructions = reminder?.medicines?.instructions || "";
+
+    document.getElementById("alarm-med-title").textContent = name;
+    document.getElementById("alarm-med-dosage").textContent = dosage || "Standard Dose";
+    document.getElementById("alarm-med-time").textContent = time;
+
+    const instWrap = document.getElementById("alarm-med-instructions-wrap");
+    if (instructions) {
+      document.getElementById("alarm-med-instructions").textContent = instructions;
+      instWrap.style.display = "block";
+    } else {
+      instWrap.style.display = "none";
+    }
+
+    document.getElementById("alarm-overlay").classList.add("active");
+    startAlarmSound();
+    startTitleFlash(name);
+    showToast(`🚨 TIME TO TAKE: ${name}!`, true, 10000);
+    showBrowserNotification(name, dosage);
+  }
+
+  function closeAlarmModal() {
+    document.getElementById("alarm-overlay").classList.remove("active");
+    stopAlarmSound();
+    stopTitleFlash();
+  }
+
+  async function takeAlarmMedicine() {
+    if (!activeAlarmReminder || !activeAlarmReminder.id) {
+      closeAlarmModal();
+      showToast("✅ Great! Alarm test completed.");
+      return;
+    }
+    const remId = activeAlarmReminder.id;
+    const medName = activeAlarmReminder.medicines?.name || "Medicine";
+    await updateStatus(remId, "taken", medName);
+    alertedReminders.add(remId);
+    closeAlarmModal();
+  }
+
+  function snoozeAlarm() {
+    if (activeAlarmReminder && activeAlarmReminder.id) {
+      snoozedReminders.set(activeAlarmReminder.id, Date.now() + 5 * 60 * 1000);
+      showToast(`⏰ Snoozed "${activeAlarmReminder.medicines?.name || 'reminder'}" for 5 minutes.`);
+    }
+    closeAlarmModal();
+  }
+
+  function dismissAlarm() {
+    if (activeAlarmReminder && activeAlarmReminder.id) {
+      alertedReminders.add(activeAlarmReminder.id);
+    }
+    closeAlarmModal();
+  }
+
+  function triggerAlarmTest() {
+    initAudio();
+    triggerAlarm({
+      id: 0,
+      scheduled_time: new Date().toTimeString().slice(0, 5),
+      medicines: {
+        name: "Test Medicine (Paracetamol)",
+        dosage: "500 mg",
+        instructions: "Take with water after lunch."
+      }
+    });
+  }
+
+  // ── Browser Notifications ──
+  function enableNotifications() {
+    initAudio();
+    Notification.requestPermission().then(permission => {
+      document.getElementById("notif-banner").style.display = "none";
+      if (permission === "granted") {
+        showToast("🔔 Notifications enabled!");
+        new Notification("MediRemind", {
+          body: "✅ You will now receive on-screen alerts and audio reminders!",
+          icon: "https://cdn.jsdelivr.net/npm/twemoji@14/assets/72x72/1f48a.png",
+        });
+      }
+    });
+  }
+
+  function showBrowserNotification(medicineName, dosage) {
+    if (Notification.permission !== "granted") return;
+    const notif = new Notification("⏰ Medicine Reminder – MediRemind", {
+      body: `Time to take: ${medicineName}${dosage ? " " + dosage : ""}`,
+      icon: "https://cdn.jsdelivr.net/npm/twemoji@14/assets/72x72/1f48a.png",
+      badge: "https://cdn.jsdelivr.net/npm/twemoji@14/assets/72x72/1f514.png",
+      requireInteraction: true,
+      tag: `reminder-${medicineName}`,
+    });
+    notif.onclick = () => { window.focus(); notif.close(); };
+  }
+
+  if ("Notification" in window && Notification.permission === "default") {
+    document.getElementById("notif-banner").style.display = "flex";
+  }
+
+  document.addEventListener("click", () => initAudio(), { once: true });
+
+  function formatTime(t) {
+    if (!t) return "–";
+    const [h, m] = t.split(":").map(Number);
+    return `${String(h % 12 || 12).padStart(2,"0")}:${String(m).padStart(2,"0")} ${h >= 12 ? "PM" : "AM"}`;
+  }
+
+  function statusBadge(status) {
+    if (status === "taken")   return '<span class="badge badge-success">✅ Taken</span>';
+    if (status === "skipped") return '<span class="badge badge-danger">⏭️ Skipped</span>';
+    return '<span class="badge badge-warning">⏳ Pending</span>';
+  }
+
+  let remindersCache = [];
+
+  async function loadSchedule() {
+    const container = document.getElementById("schedule-list");
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><p>Loading…</p></div>';
+
+    try {
+      const res  = await fetch(`${API}/reminders/today`, { headers: { Authorization: token } });
+      const data = await res.json();
+      remindersCache = data.reminders || [];
+
+      const total   = remindersCache.length;
+      const taken   = remindersCache.filter(r => r.status === "taken").length;
+      const pending = remindersCache.filter(r => r.status === "pending").length;
+
+      document.getElementById("s-total").textContent   = total;
+      document.getElementById("s-taken").textContent   = taken;
+      document.getElementById("s-pending").textContent = pending;
+
+      if (!total) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <p>No reminders for today. <a href="add-medicine.html" style="color:var(--primary)">Add a medicine</a> to get started.</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = '<div class="schedule-list">' +
+        remindersCache.map(r => `
+          <div class="schedule-card" id="card-${r.id}">
+            <div class="schedule-time">${formatTime(r.scheduled_time)}</div>
+            <div class="schedule-divider"></div>
+            <div class="schedule-info">
+              <div class="schedule-name">${r.medicines?.name || "Medicine"}</div>
+              <div class="schedule-dosage">${r.medicines?.dosage || ""}</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              ${statusBadge(r.status)}
+              ${r.status === "pending" ? `
+                <button class="btn btn-success btn-sm" onclick="updateStatus(${r.id}, 'taken',   '${r.medicines?.name || ""}')">✅ Taken</button>
+                <button class="btn btn-warning btn-sm" onclick="updateStatus(${r.id}, 'skipped', '${r.medicines?.name || ""}')">⏭️ Skip</button>
+              ` : ""}
+            </div>
+          </div>`).join("") +
+      '</div>';
+
+      checkReminders();
+    } catch (e) {
+      container.innerHTML = '<p style="text-align:center;color:var(--danger);padding:30px">Failed to load schedule.</p>';
+    }
+  }
+
+  async function updateStatus(reminderId, status, medicineName) {
+    try {
+      const res = await fetch(`${API}/reminders/${reminderId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Authorization: token },
+        body: JSON.stringify({ status, medicine_name: medicineName }),
+      });
+      if (!res.ok) throw new Error("Update failed");
+
+      showToast(status === "taken"
+        ? `✅ "${medicineName}" marked as taken!`
+        : `⏭️ "${medicineName}" skipped`
+      );
+      loadSchedule();
+    } catch (e) {
+      showToast("❌ Failed to update status");
+    }
+  }
+
+  // ── Reminder checker (runs every 10 seconds) ──
+  function checkReminders() {
+    const now = new Date();
+    const nowHHMM = now.toTimeString().slice(0, 5); // "HH:MM"
+    const nowMs = now.getTime();
+
+    remindersCache.forEach(r => {
+      if (r.status !== "pending") return;
+
+      const schedHHMM = (r.scheduled_time || "").slice(0, 5);
+      if (!schedHHMM) return;
+
+      const snoozeUntil = snoozedReminders.get(r.id);
+      if (snoozeUntil) {
+        if (nowMs >= snoozeUntil) {
+          snoozedReminders.delete(r.id);
+          triggerAlarm(r);
+        }
+        return;
+      }
+
+      if (alertedReminders.has(r.id)) return;
+
+      if (schedHHMM === nowHHMM) {
+        alertedReminders.add(r.id);
+        triggerAlarm(r);
+      }
+    });
+  }
+
+  loadSchedule();
+  setInterval(() => {
+    checkReminders();
+  }, 10000);
+  setInterval(() => {
+    loadSchedule();
+  }, 30000);
+</script>
+
+</body>
+</html>
